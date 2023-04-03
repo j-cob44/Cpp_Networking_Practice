@@ -1,15 +1,55 @@
 // NetworkingPractice_Server.cpp : This file contains the 'main' function. Program execution begins and ends there.
 // Jacob Burton 2023
+// With help from https://beej.us/guide/bgnet/ and https://learn.microsoft.com/en-us/windows/win32/api/winsock
 
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 
 #include <iostream>
+#include <vector>
+#include <thread>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
 #pragma comment(lib, "ws2_32.lib") // link with Winsock library
 
 #define PORT 8888
+
+// Function to handle client connections, runs in a separate threads for multiple connections
+void handleClient(SOCKET clientSocket, sockaddr_in clientAddress) {
+    char ipStr[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &clientAddress.sin_addr, ipStr, INET_ADDRSTRLEN);
+    std::cout << "New client connected from " << ipStr << std::endl;
+
+    // TODO: Client Communication
+    int i = 0;
+    bool clientPresent = true;
+    while (clientPresent) {
+        // Wait 5 seconds
+        Sleep(5000);
+        
+        // Ping Client
+        char buffer[1024] = ".Ping.";
+        int len = strlen(buffer);
+        int status = send(clientSocket, buffer, len, 0);
+        // Error Check ping to see if client is still there,
+        if (status == SOCKET_ERROR) {
+            std::cout << "Disconnected " << ipStr << " from Error." << std::endl;
+            closesocket(clientSocket);
+            return;
+        }
+        else if (status == 0) {
+            // Socket Gracefully Closed
+            clientPresent = false;
+        }
+        else {
+            std::cout << "Sent: " << buffer << " To: " << ipStr << std::endl;
+        }
+    }
+
+    // Close the socket and clean up
+    closesocket(clientSocket);
+    std::cout << "Client " << ipStr << " Disconnected." << std::endl;
+}
 
 int main()
 {
@@ -58,6 +98,9 @@ int main()
 
     std::cout << "Server started at: localhost:" << PORT << std::endl;
 
+    // Vector of Client Threads
+    std::vector<std::thread> clientThreads;
+
     // Accept incoming connections and handle them
     while (true) {
         // Initialize client information
@@ -68,18 +111,14 @@ int main()
         SOCKET clientSocket = accept(serverSocket, (sockaddr*)&clientAddress, &clientAddressLength);
         // Client Connection Error Check
         if (clientSocket == INVALID_SOCKET) {
-            std::cerr << "accept failed: " << WSAGetLastError() << std::endl;
+            std::cerr << "Accept failed: " << WSAGetLastError() << std::endl;
             closesocket(serverSocket);
             WSACleanup();
             return 1;
         }
 
-        char ipStr[INET_ADDRSTRLEN];
-        inet_ntop(AF_INET, &clientAddress.sin_addr, ipStr, INET_ADDRSTRLEN);
-        std::cout << "New client connected from " << ipStr << std::endl;
-
-        // TODO: Handle client connection
-
+        // Start a new thread to handle a client's connection
+        clientThreads.emplace_back(handleClient, clientSocket, clientAddress);
     }
 
     // Clean up
