@@ -30,20 +30,38 @@ void handleClient(SOCKET clientSocket, sockaddr_in clientAddress) {
         // Ping Client
         char buffer[1024] = ".Ping.";
         int len = strlen(buffer);
-        int status = send(clientSocket, buffer, len, 0);
+        int send_status = send(clientSocket, buffer, len, 0);
         // Error Check ping to see if client is still there,
-        if (status == SOCKET_ERROR) {
+        if (send_status == SOCKET_ERROR) {
             std::cout << "Disconnected " << ipStr << " from Error." << std::endl;
             closesocket(clientSocket);
             return;
         }
-        else if (status == 0) {
+        else if (send_status == 0) {
             // Socket Gracefully Closed
             clientPresent = false;
         }
         else {
             std::cout << "Sent: " << buffer << " To: " << ipStr << std::endl;
         }
+
+        // Receive Client Response
+        ZeroMemory(buffer, 1024);
+        int recv_status = recv(clientSocket, buffer, 1024, 0);
+        // Error Check ping to see if client is still there,
+        if (recv_status == SOCKET_ERROR) {
+			std::cout << "Disconnected " << ipStr << " from Error." << std::endl;
+			closesocket(clientSocket);
+			return;
+		}
+        else if (recv_status == 0) {
+			// Socket Gracefully Closed
+			clientPresent = false;
+		}
+        else {
+
+			std::cout << "Received: " << buffer << " From: " << ipStr << std::endl;
+		}
     }
 
     // Close the socket and clean up

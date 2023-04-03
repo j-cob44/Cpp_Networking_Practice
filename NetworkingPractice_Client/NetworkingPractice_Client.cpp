@@ -52,14 +52,14 @@ int main() {
 
         // Receive Message from the server
         char buffer[1024] = { 0 };
-        int status = recv(clientSocket, buffer, sizeof(buffer), 0);
-        if (status == SOCKET_ERROR) {
+        int recv_status = recv(clientSocket, buffer, sizeof(buffer), 0);
+        if (recv_status == SOCKET_ERROR) {
 			std::cerr << "Receive failed: " << WSAGetLastError() << std::endl;
 			closesocket(clientSocket);
 			WSACleanup();
 			return 1;
 		}
-        else if (status == 0) {
+        else if (recv_status == 0) {
 			std::cout << "Server disconnected" << std::endl;
 			connected = false;
 		}
@@ -67,7 +67,21 @@ int main() {
 			std::cout << "Server says: " << buffer << std::endl;
 		}
 
-
+        // Send Message to the Server
+        std::string message;
+        std::getline(std::cin, message);
+        if (message == "exit") {
+			connected = false;
+		}
+        else if (!message.empty()) {
+			int send_status = send(clientSocket, message.c_str(), message.size() + 1, 0);
+            if (send_status == SOCKET_ERROR) {
+				std::cerr << "Send failed: " << WSAGetLastError() << std::endl;
+				closesocket(clientSocket);
+				WSACleanup();
+				return 1;
+			}
+		}
     }
 
     // Clean up
