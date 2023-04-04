@@ -14,58 +14,109 @@
 
 #define PORT 8888
 
+// Server will send data asynchronously 
+void handleSending(SOCKET clientSocket, sockaddr_in clientAddress) {
+    char ipStr[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &clientAddress.sin_addr, ipStr, INET_ADDRSTRLEN);
+
+    bool clientPresent = true;
+    while (clientPresent) {
+        Sleep(1000); // Wait 1 second
+
+        // Ping Client
+        char buffer[1024] = ".Ping.";
+        int len = strlen(buffer);
+        int send_status = send(clientSocket, buffer, len, 0);
+        // Error Check ping to see if client is still there,
+        if (send_status == 0) {
+            // Socket Gracefully Closed
+            clientPresent = false;
+        }
+        else if (send_status == SOCKET_ERROR) {
+			// Socket Error
+			clientPresent = false;
+		}
+        else {
+            std::cout << "Sent: " << buffer << " To: " << ipStr << std::endl;
+        }
+    }
+}
+
+// Server will receive data asynchronously
+void handleReceiving(SOCKET clientSocket, sockaddr_in clientAddress) {
+    char ipStr[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &clientAddress.sin_addr, ipStr, INET_ADDRSTRLEN);
+
+    char buffer[1024] = "";
+    bool clientPresent = true;
+    while (clientPresent) {
+        Sleep(1000); // Wait 1 second
+
+        // Receive Client Response
+        ZeroMemory(buffer, 1024);
+        int recv_status = recv(clientSocket, buffer, 1024, 0);
+        // If data is received, print it out, if recv_status == 0, client has disconnected
+        if(recv_status > 0) {
+            std::cout << "Received: " << buffer << " From: " << ipStr << std::endl;
+        }
+        else if (recv_status == 0) {
+            // Socket Gracefully Closed
+            clientPresent = false;
+        }
+        else {
+            // Socket Error
+            clientPresent = false;
+        }
+            
+        ZeroMemory(buffer, 1024);
+    }
+}
+
 // Function to handle client connections, runs in a separate threads for multiple connections
 void handleClient(SOCKET clientSocket, sockaddr_in clientAddress) {
     char ipStr[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &clientAddress.sin_addr, ipStr, INET_ADDRSTRLEN);
     std::cout << "New client connected from " << ipStr << std::endl;
 
-    // TODO: Client Communication
+    // Create Threads for client
+    std::vector<std::thread> clientActionsThread;
+
+    // Add Thread for Sending and Receiving
+    clientActionsThread.emplace_back(handleSending, clientSocket, clientAddress);
+    clientActionsThread.emplace_back(handleReceiving, clientSocket, clientAddress);
+
     int i = 0;
     bool clientPresent = true;
     while (clientPresent) {
         // Wait 5 seconds
         Sleep(5000);
-        
-        // Ping Client
-        char buffer[1024] = ".Ping.";
-        int len = strlen(buffer);
-        int send_status = send(clientSocket, buffer, len, 0);
-        // Error Check ping to see if client is still there,
-        if (send_status == SOCKET_ERROR) {
-            std::cout << "Disconnected " << ipStr << " from Error." << std::endl;
-            closesocket(clientSocket);
-            return;
-        }
-        else if (send_status == 0) {
-            // Socket Gracefully Closed
+
+        // Check if the Connection is still alive
+        fd_set readSet;
+        FD_ZERO(&readSet);
+        FD_SET(clientSocket, &readSet);
+        timeval timeout = { 0, 0 }; // timeout of 0 seconds
+        int selectResult = select(0, &readSet, nullptr, nullptr, &timeout);
+        if (selectResult == SOCKET_ERROR) {
+            std::cerr << "Select failed: " << WSAGetLastError() << std::endl;
             clientPresent = false;
         }
-        else {
-            std::cout << "Sent: " << buffer << " To: " << ipStr << std::endl;
-        }
-
-        // Receive Client Response
-        ZeroMemory(buffer, 1024);
-        int recv_status = recv(clientSocket, buffer, 1024, 0);
-        // Error Check ping to see if client is still there,
-        if (recv_status == SOCKET_ERROR) {
-			std::cout << "Disconnected " << ipStr << " from Error." << std::endl;
-			closesocket(clientSocket);
-			return;
+        else if (selectResult == 0) {
+            // Socket healthy
 		}
-        else if (recv_status == 0) {
-			// Socket Gracefully Closed
+        else {
+			// Socket Error
 			clientPresent = false;
-		}
-        else {
-
-			std::cout << "Received: " << buffer << " From: " << ipStr << std::endl;
-		}
+        }
     }
-
     // Close the socket and clean up
     closesocket(clientSocket);
+
+    // Close client action threads
+    for (auto& i : clientActionsThread) {
+        i.join();
+    }
+
     std::cout << "Client " << ipStr << " Disconnected." << std::endl;
 }
 
@@ -141,6 +192,12 @@ int main()
 
     // Clean up
     closesocket(serverSocket);
+
+    // Close client threads
+    for (auto& i : clientThreads) {
+        i.join();
+    }
+
     WSACleanup();
     return 0;
 }
