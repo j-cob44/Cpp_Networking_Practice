@@ -248,7 +248,7 @@ int main()
         return 1;
     }
 
-    std::cout << "Server started at: " << Server_IP <<":" << PORT << std::endl;
+    std::cout << "Server started at: " << ipAddress <<":" << port << std::endl;
 
     // Thread for handling Client Connections
     std::thread clientConnectionsThread(handleClientConnections, serverSocket);
