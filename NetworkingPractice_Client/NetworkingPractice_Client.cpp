@@ -66,10 +66,15 @@ int main() {
     std::cout << "Enter IP Address: ";
     std::cin.getline(ipAddress, INET_ADDRSTRLEN);
 
+    // Get PORT from User
+    int port;
+    std::cout << "Enter Port: ";
+    std::cin >> port;
+
     // Connect to the server
     sockaddr_in serverAddress;
     serverAddress.sin_family = AF_INET; // IPv4
-    serverAddress.sin_port = htons(8888); // Port number
+    serverAddress.sin_port = htons(port); // Port number
     serverAddress.sin_addr.s_addr = inet_addr(ipAddress); // Server IP address
 
     result = connect(clientSocket, (sockaddr*)&serverAddress, sizeof(serverAddress));

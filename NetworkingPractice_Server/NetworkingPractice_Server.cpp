@@ -12,8 +12,8 @@
 
 #pragma comment(lib, "ws2_32.lib") // link with Winsock library
 
-#define PORT 8888
-#define Server_IP "10.0.0.238"
+#define default_PORT 8888
+#define default_Server_IP "10.0.0.238"
 
 
 // Global client Count
@@ -71,7 +71,6 @@ void handleSending(SOCKET clientSocket, sockaddr_in clientAddress) {
             // Socket is closed or in an error state
             clientPresent = false;
         }
-
     }
 }
 
@@ -214,13 +213,21 @@ int main()
         return 1;
     }
 
+    // Get IP address from User
+    char ipAddress[INET_ADDRSTRLEN];
+    std::cout << "Enter IP Address: ";
+    std::cin.getline(ipAddress, INET_ADDRSTRLEN);
 
+    // Get PORT from User
+    int port;
+    std::cout << "Enter Port: ";
+    std::cin >> port;
 
     // Bind the socket to a local address and port
     sockaddr_in localAddress;
     localAddress.sin_family = AF_INET; // IPv4
-    localAddress.sin_port = htons(PORT); // Port number
-    inet_pton(AF_INET, Server_IP, &localAddress.sin_addr);
+    localAddress.sin_port = htons(port); // Port number
+    inet_pton(AF_INET, ipAddress, &localAddress.sin_addr);
 
     iResult = bind(serverSocket, (sockaddr*)&localAddress, sizeof(localAddress));
     // Server Socket Binding Error Check
