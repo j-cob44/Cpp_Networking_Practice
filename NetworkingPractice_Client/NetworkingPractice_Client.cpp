@@ -9,6 +9,7 @@
 #include <vector>
 #include <thread>
 #include <winsock2.h>
+#include <ws2tcpip.h>
 
 #pragma comment(lib, "ws2_32.lib") // link with Winsock library
 
@@ -29,12 +30,11 @@ void handleSending(SOCKET clientSocket) {
                 connected = false;
             }
         }
-        else {
-            int send_status = send(clientSocket, "", 0, 0);
-            if (send_status == SOCKET_ERROR) {
-                std::cerr << "Send failed: " << WSAGetLastError() << std::endl;
-                connected = false;
-            }
+
+        int send_status = send(clientSocket, "", 0, 0);
+        if (send_status == SOCKET_ERROR) {
+            std::cerr << "Ping failed: " << WSAGetLastError() << std::endl;
+            connected = false;
         }
     }
 
@@ -61,11 +61,16 @@ int main() {
         return 1;
     }
 
+    // Get IP address from User
+    char ipAddress[INET_ADDRSTRLEN];
+    std::cout << "Enter IP Address: ";
+    std::cin.getline(ipAddress, INET_ADDRSTRLEN);
+
     // Connect to the server
     sockaddr_in serverAddress;
-    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_family = AF_INET; // IPv4
     serverAddress.sin_port = htons(8888); // Port number
-    serverAddress.sin_addr.s_addr = inet_addr("127.0.0.1"); // Server IP address
+    serverAddress.sin_addr.s_addr = inet_addr(ipAddress); // Server IP address
 
     result = connect(clientSocket, (sockaddr*)&serverAddress, sizeof(serverAddress));
     // Socket Connection Error Check
@@ -96,7 +101,7 @@ int main() {
             connected = false;
         }
         else {
-            std::cout << "Server says: " << buffer << std::endl;
+            std::cout << ": " << buffer << std::endl;
         }
 
         ZeroMemory(buffer, 1024);

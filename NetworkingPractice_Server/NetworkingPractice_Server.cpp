@@ -13,6 +13,16 @@
 #pragma comment(lib, "ws2_32.lib") // link with Winsock library
 
 #define PORT 8888
+#define Server_IP "10.0.0.238"
+
+
+// Global client Count
+int clients = 0;
+
+// Global message queue
+std::vector<std::string> messageQueue;
+std::string currentMessageToSend = "";
+int clientsAwaitingMessage = 0;
 
 // Server will send data asynchronously 
 void handleSending(SOCKET clientSocket, sockaddr_in clientAddress) {
@@ -21,24 +31,47 @@ void handleSending(SOCKET clientSocket, sockaddr_in clientAddress) {
 
     bool clientPresent = true;
     while (clientPresent) {
-        Sleep(1000); // Wait 1 second
+        char buffer[1024] = "";
 
-        // Ping Client
-        char buffer[1024] = ".Ping.";
-        int len = strlen(buffer);
-        int send_status = send(clientSocket, buffer, len, 0);
-        // Error Check ping to see if client is still there,
-        if (send_status == 0) {
-            // Socket Gracefully Closed
+        // Get Message to send to client
+        if (!currentMessageToSend.empty() && clientsAwaitingMessage != 0) {
+			std::string message = currentMessageToSend;
+
+            clientsAwaitingMessage--;
+
+			strcpy_s(buffer, message.c_str());
+		}
+
+        if (strlen(buffer) != 0) {
+            int len = strlen(buffer);
+            int send_status = send(clientSocket, buffer, len, 0);
+            // Error Check ping to see if client is still there,
+            if (send_status == 0) {
+                // Socket Gracefully Closed
+                clientPresent = false;
+            }
+            else if (send_status == SOCKET_ERROR) {
+                // Socket Error
+                clientPresent = false;
+            }
+            else {
+                std::cout << "Sent: " << buffer << " To: " << ipStr << std::endl;
+            }
+		}
+
+        // Check if clientSocket is still connected
+        int error = 0;
+        socklen_t len = sizeof(error);
+
+        int socketstatus = getsockopt(clientSocket, SOL_SOCKET, SO_ERROR, (char*)&error, &len);
+        if (socketstatus == 0 && error == 0) {
+            // Socket is still open
+        }
+        else {
+            // Socket is closed or in an error state
             clientPresent = false;
         }
-        else if (send_status == SOCKET_ERROR) {
-			// Socket Error
-			clientPresent = false;
-		}
-        else {
-            std::cout << "Sent: " << buffer << " To: " << ipStr << std::endl;
-        }
+
     }
 }
 
@@ -58,6 +91,9 @@ void handleReceiving(SOCKET clientSocket, sockaddr_in clientAddress) {
         // If data is received, print it out, if recv_status == 0, client has disconnected
         if(recv_status > 0) {
             std::cout << "Received: " << buffer << " From: " << ipStr << std::endl;
+            
+            // Received Data, add it to message queue
+            messageQueue.push_back(buffer);
         }
         else if (recv_status == 0) {
             // Socket Gracefully Closed
@@ -74,12 +110,15 @@ void handleReceiving(SOCKET clientSocket, sockaddr_in clientAddress) {
 
 // Function to handle client connections, runs in a separate threads for multiple connections
 void handleClient(SOCKET clientSocket, sockaddr_in clientAddress) {
+    // Create Threads for client
+    std::vector<std::thread> clientActionsThread;
+
+    // Increment Client Count
+    clients++;
+
     char ipStr[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &clientAddress.sin_addr, ipStr, INET_ADDRSTRLEN);
     std::cout << "New client connected from " << ipStr << std::endl;
-
-    // Create Threads for client
-    std::vector<std::thread> clientActionsThread;
 
     // Add Thread for Sending and Receiving
     clientActionsThread.emplace_back(handleSending, clientSocket, clientAddress);
@@ -118,6 +157,41 @@ void handleClient(SOCKET clientSocket, sockaddr_in clientAddress) {
     }
 
     std::cout << "Client " << ipStr << " Disconnected." << std::endl;
+    
+    // Decrement Client Count
+    clients--;
+}
+
+// Handle Connections
+void handleClientConnections(SOCKET serverSocket) {
+    // Vector of Client Threads
+    std::vector<std::thread> clientThreads;
+
+    bool running = true;
+    while (running) {
+        // Initialize client information
+        sockaddr_in clientAddress;
+        int clientAddressLength = sizeof(clientAddress);
+
+        // Accept Client Connections
+        SOCKET clientSocket = accept(serverSocket, (sockaddr*)&clientAddress, &clientAddressLength);
+        // Client Connection Error Check
+        if (clientSocket == INVALID_SOCKET) {
+            std::cerr << "Accept failed: " << WSAGetLastError() << std::endl;
+            closesocket(serverSocket);
+            WSACleanup();
+            running = false;
+        }
+        else {
+            // Start a new thread to handle a client's connection
+            clientThreads.emplace_back(handleClient, clientSocket, clientAddress);
+        }
+    }
+
+    // Close client threads
+    for (auto& i : clientThreads) {
+        i.join();
+    }
 }
 
 int main()
@@ -140,11 +214,13 @@ int main()
         return 1;
     }
 
+
+
     // Bind the socket to a local address and port
     sockaddr_in localAddress;
     localAddress.sin_family = AF_INET; // IPv4
     localAddress.sin_port = htons(PORT); // Port number
-    localAddress.sin_addr.s_addr = htonl(INADDR_ANY); // Any local address
+    inet_pton(AF_INET, Server_IP, &localAddress.sin_addr);
 
     iResult = bind(serverSocket, (sockaddr*)&localAddress, sizeof(localAddress));
     // Server Socket Binding Error Check
@@ -165,38 +241,28 @@ int main()
         return 1;
     }
 
-    std::cout << "Server started at: localhost:" << PORT << std::endl;
+    std::cout << "Server started at: " << Server_IP <<":" << PORT << std::endl;
 
-    // Vector of Client Threads
-    std::vector<std::thread> clientThreads;
+    // Thread for handling Client Connections
+    std::thread clientConnectionsThread(handleClientConnections, serverSocket);
 
     // Accept incoming connections and handle them
     while (true) {
-        // Initialize client information
-        sockaddr_in clientAddress;
-        int clientAddressLength = sizeof(clientAddress);
-
-        // Accept Client Connections
-        SOCKET clientSocket = accept(serverSocket, (sockaddr*)&clientAddress, &clientAddressLength);
-        // Client Connection Error Check
-        if (clientSocket == INVALID_SOCKET) {
-            std::cerr << "Accept failed: " << WSAGetLastError() << std::endl;
-            closesocket(serverSocket);
-            WSACleanup();
-            return 1;
+        if (messageQueue.size() > 0 && clientsAwaitingMessage == 0 && currentMessageToSend.empty()) {
+            clientsAwaitingMessage = clients;
+            currentMessageToSend = messageQueue[0];
+            messageQueue.erase(messageQueue.begin());
         }
-
-        // Start a new thread to handle a client's connection
-        clientThreads.emplace_back(handleClient, clientSocket, clientAddress);
+        else if (messageQueue.size() > 0 && clientsAwaitingMessage == 0 && !currentMessageToSend.empty()) {
+            currentMessageToSend = "";
+        }
     }
 
     // Clean up
     closesocket(serverSocket);
 
-    // Close client threads
-    for (auto& i : clientThreads) {
-        i.join();
-    }
+    // Close Connection Thread
+    clientConnectionsThread.join();
 
     WSACleanup();
     return 0;
